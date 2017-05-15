@@ -1,15 +1,34 @@
+/*
+ * LS project
+ * ----------
+ * Jayson Isaac
+ * CSCI 493
+ */
+
+
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
+
+struct fileinfo{
+  char name[100];
+  off_t size;
+};
+
+int
+fcompare(const void *a, const void *b){
+  struct fileinfo *x = (struct fileinfo *) a;
+  struct fileinfo *y = (struct fileinfo *) b;
+  return y->size - x->size;
+};
 
 int
 main(int argc, char* argv[]){
@@ -21,7 +40,10 @@ main(int argc, char* argv[]){
   struct dirent *entry;
   if(cdir != NULL){
 
-    // No flags
+    /*
+     *  NO FLAGS
+     *  Doesn't display files/directory names starting with dots
+     */
     if(argc < 2){
       while((entry = readdir(cdir))){
         if(entry->d_name[0] != '.')
@@ -30,7 +52,11 @@ main(int argc, char* argv[]){
       closedir(cdir);
     }
 
-    // -a, Include dir entries that begin with a dot
+    /*
+     *  -a
+     *  Include files/directory names that begin with a dot
+     *
+     */
     else if (strncmp(argv[1],"-a", 2) == 0){
       while((entry = readdir(cdir))){
         printf("%s\t", entry->d_name);
@@ -38,7 +64,10 @@ main(int argc, char* argv[]){
       closedir(cdir);
     }
 
-    // -i, Prepend each file's inode number
+    /*
+     *  -i
+     *  Prepend each file's inode number
+     */
     else if (strncmp(argv[1], "-i", 2) == 0){
       while((entry = readdir(cdir))){
         if(entry->d_name[0] != '.')
@@ -47,39 +76,49 @@ main(int argc, char* argv[]){
       closedir(cdir);
     }
 
-    //-m, list files across the page separated by commas
+    /*
+     *  -m
+     *  List files across the page separated by commas
+     */
     else if (strncmp(argv[1], "-m", 2) == 0){
       char s[1024];
       while((entry = readdir(cdir))){
         if(entry->d_name[0] != '.'){
           strcat(s, entry->d_name);
-          strcat(s, ", \t");
+          strcat(s, ", ");
         }
       }
       int len = strlen(s);
-      s[len-3] = '\0';
+      s[len-2] = '\0';
       printf("%s", s);
       closedir(cdir);
     }
 
-    //-1, one file per line
+    /*
+     *  -1
+     *  one file per line
+     */
     else if (strncmp(argv[1],"-1", 2) == 0){
       while((entry = readdir(cdir))){
-        printf("%s\t", entry->d_name);
+        if(entry->d_name[0] != '.'){
+          printf("%s\n", entry->d_name);
+        }
       }
       closedir(cdir);
     }
 
-    // -l:
-    // one file per line with file mode, number of links, owner name, group name,
-    // number of bytes in the file, abbreviated month, day-of-month file was
-    // last modified, hour file last modified, minute file last modified, and
-    // the pathname
+    /*
+     *  -l
+     *  one file per line with file mode, number of links, owner name, group name,
+     *  number of bytes in the file, abbreviated month, day-of-month file was
+     *  last modified, hour file last modified, minute file last modified, and
+     *  the pathname
+     */
     else if (strncmp(argv[1], "-l", 2) == 0){
       while((entry = readdir(cdir))){
         if(entry->d_name[0] != '.'){
           struct stat f_info;
-          int i = stat(entry->d_name, &f_info);
+          stat(entry->d_name, &f_info);
 
           // Permissions
           printf( (S_ISDIR(f_info.st_mode)) ? "d" : "-");
@@ -122,6 +161,41 @@ main(int argc, char* argv[]){
       }
       closedir(cdir);
     }
-  return 0;
+
+    // 6. -S, sort files by size
+    else if (strncmp(argv[1], "-S", 2) == 0){
+      int filecount = 0;
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          filecount++;
+        }
+      }
+      rewinddir(cdir);
+
+      int i = 0;
+      struct fileinfo files[filecount]; //array size should be calculated
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          struct stat f_info;
+          stat(entry->d_name, &f_info);
+
+          struct fileinfo file;
+          strcpy(file.name, entry->d_name);
+          file.size = f_info.st_size;
+          files[i] = file;
+
+          i++;
+        }
+      }
+
+      qsort(files, sizeof(files) / sizeof(*files), sizeof(*files), fcompare);
+
+      for(int k = 0; k < (sizeof(files)/sizeof(*files)); k++){
+        printf("%s\t", files[k].name);
+      }
+      closedir(cdir);
+    }
+
+    return 0;
   }
 }
