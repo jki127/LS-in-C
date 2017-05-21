@@ -21,14 +21,39 @@
 struct fileinfo{
   char name[100];
   off_t size;
+  time_t mtime;
 };
 
 int
-fcompare(const void *a, const void *b){
+fsize_compare(const void *a, const void *b){
   struct fileinfo *x = (struct fileinfo *) a;
   struct fileinfo *y = (struct fileinfo *) b;
   return y->size - x->size;
 };
+
+int
+fmtime_compare(const void *a, const void *b){
+  struct fileinfo *x = (struct fileinfo *) a;
+  struct fileinfo *y = (struct fileinfo *) b;
+  return y->mtime - x->mtime;
+};
+
+void
+print_total_blocks(struct dirent *entry, DIR *cdir){
+  int sum = 0;
+  while((entry = readdir(cdir))){
+    if(entry->d_name[0] != '.'){
+      struct stat f_info;
+      stat(entry->d_name, &f_info);
+
+      sum += f_info.st_blocks;
+    }
+  }
+
+  printf("total %d\n", sum);
+
+  rewinddir(cdir);
+}
 
 int
 main(int argc, char* argv[]){
@@ -115,6 +140,7 @@ main(int argc, char* argv[]){
      *  the pathname
      */
     else if (strncmp(argv[1], "-l", 2) == 0){
+      print_total_blocks(entry, cdir);
       while((entry = readdir(cdir))){
         if(entry->d_name[0] != '.'){
           struct stat f_info;
@@ -188,7 +214,7 @@ main(int argc, char* argv[]){
         }
       }
 
-      qsort(files, sizeof(files) / sizeof(*files), sizeof(*files), fcompare);
+      qsort(files, sizeof(files) / sizeof(*files), sizeof(*files), fsize_compare);
 
       for(int k = 0; k < (sizeof(files)/sizeof(*files)); k++){
         printf("%s\t", files[k].name);
@@ -196,6 +222,115 @@ main(int argc, char* argv[]){
       closedir(cdir);
     }
 
+    //7. -o, the long format without group id
+    else if (strncmp(argv[1], "-o", 2) == 0){
+      print_total_blocks(entry, cdir);
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          struct stat f_info;
+          stat(entry->d_name, &f_info);
+
+          // Permissions
+          printf( (S_ISDIR(f_info.st_mode)) ? "d" : "-");
+          printf( (f_info.st_mode & S_IRUSR) ? "r" : "-");
+          printf( (f_info.st_mode & S_IWUSR) ? "w" : "-");
+          printf( (f_info.st_mode & S_IXUSR) ? "x" : "-");
+          printf( (f_info.st_mode & S_IRGRP) ? "r" : "-");
+          printf( (f_info.st_mode & S_IWGRP) ? "w" : "-");
+          printf( (f_info.st_mode & S_IXGRP) ? "x" : "-");
+          printf( (f_info.st_mode & S_IROTH) ? "r" : "-");
+          printf( (f_info.st_mode & S_IWOTH) ? "w" : "-");
+          printf( (f_info.st_mode & S_IXOTH) ? "x" : "-");
+
+          // number of hard links
+          printf("  %d", f_info.st_nlink);
+
+          // user name
+          struct passwd *pws;
+          pws = getpwuid(f_info.st_uid);
+          printf(" %s", pws->pw_name);
+
+          // file size in bytes
+          printf("  %llu", f_info.st_size);
+
+          // last modification date
+          struct tm *modif_time;
+          char time_buf[20];
+          modif_time = localtime(&f_info.st_mtime);
+          strftime(time_buf, sizeof(time_buf), "%b %d %H:%M", modif_time);
+          printf(" %s", time_buf);
+
+          // file name
+          printf(" %s\n", entry->d_name);
+        }
+      }
+      closedir(cdir);
+    }
+
+    //8. -t Sort by last modification time (Most recently updated first)
+    else if (strncmp(argv[1], "-t", 2) == 0){
+      int filecount = 0;
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          filecount++;
+        }
+      }
+      rewinddir(cdir);
+
+      int i = 0;
+      struct fileinfo files[filecount]; //array size should be calculated
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          struct stat f_info;
+          stat(entry->d_name, &f_info);
+
+          struct fileinfo file;
+          strcpy(file.name, entry->d_name);
+          file.mtime = f_info.st_mtime;
+          files[i] = file;
+
+          i++;
+        }
+      }
+
+      qsort(files, sizeof(files) / sizeof(*files), sizeof(*files), fmtime_compare);
+
+      for(int k = 0; k < (sizeof(files)/sizeof(*files)); k++){
+        printf("%s\t", files[k].name);
+      }
+      closedir(cdir);
+    }
+
+    //9. -s, display number of file systems block used by each file
+    else if (strncmp(argv[1], "-s", 2) == 0){
+      print_total_blocks(entry, cdir);
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          struct stat f_info;
+          stat(entry->d_name, &f_info);
+
+          printf("%llu %s  ", f_info.st_blocks, entry->d_name);
+        }
+      }
+    }
+
+    //10. -p, add a slash after each filename if that file is a directory
+    else if (strncmp(argv[1], "-p", 2) == 0){
+      while((entry = readdir(cdir))){
+        if(entry->d_name[0] != '.'){
+          struct stat f_info;
+          stat(entry->d_name, &f_info);
+
+          if(S_ISDIR(f_info.st_mode)){
+            printf("%s/\t", entry->d_name);
+          }
+          else {
+            printf("%s\t", entry->d_name);
+          }
+        }
+      }
+    }
+    printf("\n");
     return 0;
   }
 }
